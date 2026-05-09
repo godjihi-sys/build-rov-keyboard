@@ -11,579 +11,10 @@ jobs:
 
     steps:
     - name: Set up JDK 17
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-
-    - name: Create Android Project Structure
-      run: |
-        mkdir -p ROVKeyboard
-
-    - name: Generate Project Files
-      working-directory: ROVKeyboard
-      run: |
-
-        # ── settings.gradle ──────────────────────────────────────────
-        cat > settings.gradle << 'SETTINGS'
-        pluginManagement {
-            repositories {
-                google()
-                mavenCentral()
-                gradlePluginPortal()
-            }
-        }
-        dependencyResolutionManagement {
-            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
-        rootProject.name = "ROVKeyboard"
-        include ':app'
-        SETTINGS
-
-        # ── build.gradle (root) ──────────────────────────────────────
-        cat > build.gradle << 'ROOT_GRADLE'
-        plugins {
-            id 'com.android.application' version '8.2.0' apply false
-        }
-        ROOT_GRADLE
-
-        # ── gradle/wrapper/gradle-wrapper.properties ─────────────────
-        mkdir -p gradle/wrapper
-        cat > gradle/wrapper/gradle-wrapper.properties << 'WRAPPER'
-        distributionBase=GRADLE_USER_HOME
-        distributionPath=wrapper/dists
-        distributionUrl=https\://services.gradle.org/distributions/gradle-8.2-bin.zip
-        zipStoreBase=GRADLE_USER_HOME
-        zipStorePath=wrapper/dists
-        WRAPPER
-
-        # ── app/build.gradle ─────────────────────────────────────────
-        mkdir -p app
-        cat > app/build.gradle << 'APP_GRADLE'
-        plugins {
-            id 'com.android.application'
-        }
-        android {
-            namespace 'com.rovkeyboard.app'
-            compileSdk 34
-            defaultConfig {
-                applicationId "com.rovkeyboard.app"
-                minSdk 21
-                targetSdk 34
-                versionCode 1
-                versionName "1.0"
-            }
-            buildTypes {
-                release {
-                    minifyEnabled false
-                }
-            }
-            compileOptions {
-                sourceCompatibility JavaVersion.VERSION_17
-                targetCompatibility JavaVersion.VERSION_17
-            }
-        }
-        dependencies {
-            implementation 'androidx.appcompat:appcompat:1.6.1'
-        }
-        APP_GRADLE
-
-        # ── AndroidManifest.xml ──────────────────────────────────────
-        mkdir -p app/src/main
-        cat > app/src/main/AndroidManifest.xml << 'MANIFEST'
-        <?xml version="1.0" encoding="utf-8"?>
-        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-            <uses-permission android:name="android.permission.VIBRATE"/>
-
-            <application
-                android:allowBackup="true"
-                android:icon="@mipmap/ic_launcher"
-                android:label="@string/app_name"
-                android:theme="@style/Theme.AppCompat.Light.NoActionBar">
-
-                <activity
-                    android:name=".MainActivity"
-                    android:exported="true">
-                    <intent-filter>
-                        <action android:name="android.intent.action.MAIN"/>
-                        <category android:name="android.intent.category.LAUNCHER"/>
-                    </intent-filter>
-                </activity>
-
-                <service
-                    android:name=".ROVKeyboardService"
-                    android:exported="true"
-                    android:permission="android.permission.BIND_INPUT_METHOD">
-                    <intent-filter>
-                        <action android:name="android.view.InputMethod"/>
-                    </intent-filter>
-                    <meta-data
-                        android:name="android.view.im"
-                        android:resource="@xml/method"/>
-                </service>
-
-            </application>
-        </manifest>
-        MANIFEST
-
-        # ── res/xml/method.xml ───────────────────────────────────────
-        mkdir -p app/src/main/res/xml
-        cat > app/src/main/res/xml/method.xml << 'METHOD'
-        <?xml version="1.0" encoding="utf-8"?>
-        <input-method xmlns:android="http://schemas.android.com/apk/res/android">
-            <subtype
-                android:label="ROV Code Keyboard"
-                android:imeSubtypeMode="keyboard"
-                android:imeSubtypeLocale="en_US"/>
-        </input-method>
-        METHOD
-
-        # ── res/values/strings.xml ───────────────────────────────────
-        mkdir -p app/src/main/res/values
-        cat > app/src/main/res/values/strings.xml << 'STRINGS'
-        <?xml version="1.0" encoding="utf-8"?>
-        <resources>
-            <string name="app_name">ROV Code Keyboard</string>
-        </resources>
-        STRINGS
-
-        # ── res/values/colors.xml ────────────────────────────────────
-        cat > app/src/main/res/values/colors.xml << 'COLORS'
-        <?xml version="1.0" encoding="utf-8"?>
-        <resources>
-            <color name="bg_dark">#1A1A2E</color>
-            <color name="bg_card">#16213E</color>
-            <color name="accent">#E94560</color>
-            <color name="text_white">#FFFFFF</color>
-            <color name="text_gray">#AAAAAA</color>
-        </resources>
-        COLORS
-
-        # ── Launcher icon via Python ─────────────────────────────────
-        mkdir -p app/src/main/res/mipmap-mdpi
-        mkdir -p app/src/main/res/mipmap-hdpi
-        mkdir -p app/src/main/res/mipmap-xhdpi
-        mkdir -p app/src/main/res/mipmap-xxhdpi
-
-        python3 - << 'PYICON'
-        import struct, zlib
-
-        def make_png(size, r, g, b):
-            def chunk(name, data):
-                c = zlib.crc32(name + data) & 0xffffffff
-                return struct.pack('>I', len(data)) + name + data + struct.pack('>I', c)
-            sig = b'\x89PNG\r\n\x1a\n'
-            ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0))
-            raw = b''.join(b'\x00' + bytes([r, g, b] * size) for _ in range(size))
-            idat = chunk(b'IDAT', zlib.compress(raw))
-            iend = chunk(b'IEND', b'')
-            return sig + ihdr + idat + iend
-
-        sizes = {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144}
-        for dpi, sz in sizes.items():
-            with open(f'app/src/main/res/mipmap-{dpi}/ic_launcher.png', 'wb') as f:
-                f.write(make_png(sz, 233, 69, 96))
-        print("Icons created")
-        PYICON
-
-        # ── res/layout/activity_main.xml ─────────────────────────────
-        mkdir -p app/src/main/res/layout
-        cat > app/src/main/res/layout/activity_main.xml << 'LAYOUT_MAIN'
-        <?xml version="1.0" encoding="utf-8"?>
-        <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@color/bg_dark"
-            android:padding="20dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center_horizontal">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="ROV Code Keyboard"
-                    android:textColor="@color/text_white"
-                    android:textSize="24sp"
-                    android:textStyle="bold"
-                    android:layout_marginTop="24dp"
-                    android:layout_marginBottom="8dp"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="พิมโค้ดทีละตัว — ROV บล็อกไม่ได้!"
-                    android:textColor="@color/text_gray"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="32dp"/>
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="ขั้นตอนที่ 1: เปิดใช้งาน Keyboard"
-                    android:textColor="@color/accent"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="8dp"/>
-
-                <Button
-                    android:id="@+id/btnEnableIME"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="เปิด Input Method Settings"
-                    android:backgroundTint="@color/accent"
-                    android:layout_marginBottom="24dp"/>
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="ขั้นตอนที่ 2: สลับ Keyboard"
-                    android:textColor="@color/accent"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="8dp"/>
-
-                <Button
-                    android:id="@+id/btnSwitchIME"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="สลับ Gboard / ROV Keyboard"
-                    android:backgroundTint="#0F3460"
-                    android:layout_marginBottom="24dp"/>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@color/bg_card"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="วิธีใช้"
-                        android:textColor="@color/text_white"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="8dp"/>
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="1. เปิดช่องกรอกโค้ดใน ROV\n2. กด Globe เพื่อสลับมา ROV Keyboard\n3. วางโค้ดในช่องด้านบน\n4. กด พิมให้!\n5. รอให้พิมเสร็จ\n6. กด Globe กลับไป Gboard"
-                        android:textColor="@color/text_gray"
-                        android:textSize="13sp"
-                        android:lineSpacingExtra="4dp"/>
-                </LinearLayout>
-
-            </LinearLayout>
-        </ScrollView>
-        LAYOUT_MAIN
-
-        # ── res/layout/keyboard_view.xml ─────────────────────────────
-        cat > app/src/main/res/layout/keyboard_view.xml << 'LAYOUT_KB'
-        <?xml version="1.0" encoding="utf-8"?>
-        <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="#1A1A2E"
-            android:padding="8dp">
-
-            <EditText
-                android:id="@+id/etCode"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="วางโค้ดที่นี่..."
-                android:textColor="#FFFFFF"
-                android:textColorHint="#888888"
-                android:background="#16213E"
-                android:padding="10dp"
-                android:minLines="3"
-                android:maxLines="5"
-                android:gravity="top"
-                android:inputType="textMultiLine|textNoSuggestions"
-                android:privateImeOptions="nm"
-                android:layout_marginBottom="6dp"/>
-
-            <TextView
-                android:id="@+id/tvStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="พร้อมใช้งาน"
-                android:textColor="#00FF88"
-                android:textSize="12sp"
-                android:gravity="center"
-                android:padding="4dp"
-                android:layout_marginBottom="4dp"/>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnType"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="2"
-                    android:text="พิมให้!"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="#E94560"
-                    android:layout_marginEnd="4dp"
-                    android:textSize="14sp"/>
-
-                <Button
-                    android:id="@+id/btnClear"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:text="ล้าง"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="#333355"
-                    android:layout_marginEnd="4dp"
-                    android:textSize="13sp"/>
-
-                <Button
-                    android:id="@+id/btnSwitch"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:text="Globe"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="#0F3460"
-                    android:textSize="12sp"/>
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="4dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="ความเร็ว: "
-                    android:textColor="#AAAAAA"
-                    android:textSize="12sp"/>
-
-                <Button
-                    android:id="@+id/btnSlow"
-                    android:layout_width="0dp"
-                    android:layout_height="32dp"
-                    android:layout_weight="1"
-                    android:text="ช้า"
-                    android:textSize="11sp"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="#333355"
-                    android:layout_marginStart="4dp"/>
-
-                <Button
-                    android:id="@+id/btnNormal"
-                    android:layout_width="0dp"
-                    android:layout_height="32dp"
-                    android:layout_weight="1"
-                    android:text="ปกติ"
-                    android:textSize="11sp"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="#E94560"
-                    android:layout_marginStart="4dp"/>
-
-                <Button
-                    android:id="@+id/btnFast"
-                    android:layout_width="0dp"
-                    android:layout_height="32dp"
-                    android:layout_weight="1"
-                    android:text="เร็ว"
-                    android:textSize="11sp"
-                    android:textColor="#FFFFFF"
-                    android:backgroundTint="#333355"
-                    android:layout_marginStart="4dp"/>
-
-            </LinearLayout>
-
-        </LinearLayout>
-        LAYOUT_KB
-
-        # ── MainActivity.java ────────────────────────────────────────
-        mkdir -p app/src/main/java/com/rovkeyboard/app
-        cat > app/src/main/java/com/rovkeyboard/app/MainActivity.java << 'MAIN_JAVA'
-        package com.rovkeyboard.app;
-
-        import android.content.Intent;
-        import android.os.Bundle;
-        import android.provider.Settings;
-        import android.view.inputmethod.InputMethodManager;
-        import android.widget.Button;
-        import androidx.appcompat.app.AppCompatActivity;
-
-        public class MainActivity extends AppCompatActivity {
-
-            @Override
-            protected void onCreate(Bundle savedInstanceState) {
-                super.onCreate(savedInstanceState);
-                setContentView(R.layout.activity_main);
-
-                Button btnEnable = findViewById(R.id.btnEnableIME);
-                btnEnable.setOnClickListener(v ->
-                    startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
-
-                Button btnSwitch = findViewById(R.id.btnSwitchIME);
-                btnSwitch.setOnClickListener(v -> {
-                    InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-                    imm.showInputMethodPicker();
-                });
-            }
-        }
-        MAIN_JAVA
-
-        # ── ROVKeyboardService.java ──────────────────────────────────
-        cat > app/src/main/java/com/rovkeyboard/app/ROVKeyboardService.java << 'SERVICE_JAVA'
-        package com.rovkeyboard.app;
-
-        import android.content.res.ColorStateList;
-        import android.inputmethodservice.InputMethodService;
-        import android.os.Handler;
-        import android.os.Looper;
-        import android.view.View;
-        import android.view.inputmethod.InputConnection;
-        import android.view.inputmethod.InputMethodManager;
-        import android.widget.Button;
-        import android.widget.EditText;
-        import android.widget.TextView;
-
-        public class ROVKeyboardService extends InputMethodService {
-
-            private EditText etCode;
-            private TextView tvStatus;
-            private Handler handler = new Handler(Looper.getMainLooper());
-            private int charDelay = 120;
-            private boolean isTyping = false;
-            private View rootView;
-
-            @Override
-            public View onCreateInputView() {
-                rootView = getLayoutInflater().inflate(R.layout.keyboard_view, null);
-
-                etCode   = rootView.findViewById(R.id.etCode);
-                tvStatus = rootView.findViewById(R.id.tvStatus);
-
-                Button btnType   = rootView.findViewById(R.id.btnType);
-                Button btnClear  = rootView.findViewById(R.id.btnClear);
-                Button btnSwitch = rootView.findViewById(R.id.btnSwitch);
-                Button btnSlow   = rootView.findViewById(R.id.btnSlow);
-                Button btnNormal = rootView.findViewById(R.id.btnNormal);
-                Button btnFast   = rootView.findViewById(R.id.btnFast);
-
-                btnSlow.setOnClickListener(v -> {
-                    charDelay = 250;
-                    setStatus("ความเร็ว: ช้า");
-                    highlight(btnSlow, btnNormal, btnFast, 0);
-                });
-                btnNormal.setOnClickListener(v -> {
-                    charDelay = 120;
-                    setStatus("ความเร็ว: ปกติ");
-                    highlight(btnSlow, btnNormal, btnFast, 1);
-                });
-                btnFast.setOnClickListener(v -> {
-                    charDelay = 50;
-                    setStatus("ความเร็ว: เร็ว");
-                    highlight(btnSlow, btnNormal, btnFast, 2);
-                });
-
-                btnClear.setOnClickListener(v -> {
-                    etCode.setText("");
-                    setStatus("ล้างแล้ว");
-                });
-
-                btnSwitch.setOnClickListener(v -> {
-                    InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-                    imm.showInputMethodPicker();
-                });
-
-                btnType.setOnClickListener(v -> {
-                    if (isTyping) {
-                        isTyping = false;
-                        handler.removeCallbacksAndMessages(null);
-                        setStatus("หยุดแล้ว");
-                        btnType.setText("พิมให้!");
-                        return;
-                    }
-                    String code = etCode.getText().toString();
-                    if (code.isEmpty()) {
-                        setStatus("ไม่มีโค้ด — วางก่อนนะ!");
-                        return;
-                    }
-                    InputConnection ic = getCurrentInputConnection();
-                    if (ic == null) {
-                        setStatus("ไม่มี input connection");
-                        return;
-                    }
-                    isTyping = true;
-                    btnType.setText("หยุด");
-                    typeNext(code, 0);
-                });
-
-                return rootView;
-            }
-
-            private void typeNext(String code, int index) {
-                if (!isTyping || index >= code.length()) {
-                    if (isTyping) {
-                        isTyping = false;
-                        setStatus("พิมเสร็จ! (" + code.length() + " ตัว)");
-                        handler.post(() -> {
-                            Button b = rootView.findViewById(R.id.btnType);
-                            if (b != null) b.setText("พิมให้!");
-                        });
-                    }
-                    return;
-                }
-                int pct = (int)((float) index / code.length() * 100);
-                setStatus("กำลังพิม... " + pct + "% (" + (index+1) + "/" + code.length() + ")");
-                handler.postDelayed(() -> {
-                    if (!isTyping) return;
-                    InputConnection ic = getCurrentInputConnection();
-                    if (ic != null) ic.commitText(String.valueOf(code.charAt(index)), 1);
-                    typeNext(code, index + 1);
-                }, charDelay);
-            }
-
-            private void setStatus(String msg) {
-                handler.post(() -> { if (tvStatus != null) tvStatus.setText(msg); });
-            }
-
-            private void highlight(Button a, Button b, Button c, int sel) {
-                int on  = 0xFFE94560;
-                int off = 0xFF333355;
-                a.setBackgroundTintList(ColorStateList.valueOf(sel == 0 ? on : off));
-                b.setBackgroundTintList(ColorStateList.valueOf(sel == 1 ? on : off));
-                c.setBackgroundTintList(ColorStateList.valueOf(sel == 2 ? on : off));
-            }
-
-            @Override
-            public boolean onEvaluateFullscreenMode() { return false; }
-        }
-        SERVICE_JAVA
-
-        echo "All files created successfully"
-
-    - name: Download Gradle Wrapper JAR
-      working-directory: ROVKeyboard
-      run: |
-        curl -L -o gradle/wrapper/gradle-wrapper.jar \
-          https://github.com/gradle/gradle/raw/v8.2.0/gradle/wrapper/gradle-wrapper.jar
 
     - name: Set up Android SDK
       uses: android-actions/setup-android@v3
@@ -591,10 +22,350 @@ jobs:
     - name: Accept Android SDK licenses
       run: yes | sdkmanager --licenses || true
 
+    - name: Create Full Android Project
+      run: |
+        mkdir -p ROVKeyboard/.github
+        mkdir -p ROVKeyboard/gradle/wrapper
+        mkdir -p ROVKeyboard/app/src/main/java/com/rovkeyboard/app
+        mkdir -p ROVKeyboard/app/src/main/res/xml
+        mkdir -p ROVKeyboard/app/src/main/res/values
+        mkdir -p ROVKeyboard/app/src/main/res/layout
+        mkdir -p ROVKeyboard/app/src/main/res/mipmap-mdpi
+        mkdir -p ROVKeyboard/app/src/main/res/mipmap-hdpi
+        mkdir -p ROVKeyboard/app/src/main/res/mipmap-xhdpi
+        mkdir -p ROVKeyboard/app/src/main/res/mipmap-xxhdpi
+
+        # settings.gradle
+        cat > ROVKeyboard/settings.gradle << 'EOF'
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "ROVKeyboard"
+include ':app'
+EOF
+
+        # root build.gradle
+        cat > ROVKeyboard/build.gradle << 'EOF'
+plugins {
+    id 'com.android.application' version '8.2.0' apply false
+}
+EOF
+
+        # gradle wrapper properties
+        cat > ROVKeyboard/gradle/wrapper/gradle-wrapper.properties << 'EOF'
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.2-bin.zip
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+EOF
+
+        # app build.gradle
+        cat > ROVKeyboard/app/build.gradle << 'EOF'
+plugins {
+    id 'com.android.application'
+}
+android {
+    namespace 'com.rovkeyboard.app'
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.rovkeyboard.app"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+}
+EOF
+
+        # AndroidManifest.xml
+        cat > ROVKeyboard/app/src/main/AndroidManifest.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".ROVKeyboardService"
+            android:exported="true"
+            android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter>
+                <action android:name="android.view.InputMethod"/>
+            </intent-filter>
+            <meta-data android:name="android.view.im" android:resource="@xml/method"/>
+        </service>
+    </application>
+</manifest>
+EOF
+
+        # method.xml
+        cat > ROVKeyboard/app/src/main/res/xml/method.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<input-method xmlns:android="http://schemas.android.com/apk/res/android">
+    <subtype android:label="ROV Code Keyboard" android:imeSubtypeMode="keyboard" android:imeSubtypeLocale="en_US"/>
+</input-method>
+EOF
+
+        # strings.xml
+        cat > ROVKeyboard/app/src/main/res/values/strings.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ROV Code Keyboard</string>
+</resources>
+EOF
+
+        # colors.xml
+        cat > ROVKeyboard/app/src/main/res/values/colors.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_dark">#1A1A2E</color>
+    <color name="accent">#E94560</color>
+    <color name="text_white">#FFFFFF</color>
+    <color name="text_gray">#AAAAAA</color>
+</resources>
+EOF
+
+        # activity_main.xml
+        cat > ROVKeyboard/app/src/main/res/layout/activity_main.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@color/bg_dark" android:padding="20dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:gravity="center_horizontal">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="ROV Code Keyboard" android:textColor="@color/text_white"
+            android:textSize="24sp" android:textStyle="bold" android:layout_marginTop="32dp" android:layout_marginBottom="8dp"/>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="พิมโค้ดทีละตัว ROV บล็อกไม่ได้!" android:textColor="@color/text_gray"
+            android:textSize="14sp" android:layout_marginBottom="32dp"/>
+        <Button android:id="@+id/btnEnableIME" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="เปิด Input Method Settings"
+            android:backgroundTint="@color/accent" android:layout_marginBottom="16dp"/>
+        <Button android:id="@+id/btnSwitchIME" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="สลับ Keyboard"
+            android:backgroundTint="#0F3460"/>
+    </LinearLayout>
+</ScrollView>
+EOF
+
+        # keyboard_view.xml
+        cat > ROVKeyboard/app/src/main/res/layout/keyboard_view.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:background="#1A1A2E" android:padding="8dp">
+    <EditText android:id="@+id/etCode" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:hint="วางโค้ดที่นี่..."
+        android:textColor="#FFFFFF" android:textColorHint="#888888" android:background="#16213E"
+        android:padding="10dp" android:minLines="3" android:maxLines="5"
+        android:gravity="top" android:inputType="textMultiLine|textNoSuggestions"
+        android:privateImeOptions="nm" android:layout_marginBottom="6dp"/>
+    <TextView android:id="@+id/tvStatus" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:text="พร้อมใช้งาน"
+        android:textColor="#00FF88" android:textSize="12sp" android:gravity="center"
+        android:padding="4dp" android:layout_marginBottom="4dp"/>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <Button android:id="@+id/btnType" android:layout_width="0dp" android:layout_height="48dp"
+            android:layout_weight="2" android:text="พิมให้!" android:textColor="#FFFFFF"
+            android:backgroundTint="#E94560" android:layout_marginEnd="4dp"/>
+        <Button android:id="@+id/btnClear" android:layout_width="0dp" android:layout_height="48dp"
+            android:layout_weight="1" android:text="ล้าง" android:textColor="#FFFFFF"
+            android:backgroundTint="#333355" android:layout_marginEnd="4dp"/>
+        <Button android:id="@+id/btnSwitch" android:layout_width="0dp" android:layout_height="48dp"
+            android:layout_weight="1" android:text="Globe" android:textColor="#FFFFFF"
+            android:backgroundTint="#0F3460"/>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="4dp">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="ความเร็ว: " android:textColor="#AAAAAA" android:textSize="12sp"/>
+        <Button android:id="@+id/btnSlow" android:layout_width="0dp" android:layout_height="32dp"
+            android:layout_weight="1" android:text="ช้า" android:textSize="11sp"
+            android:textColor="#FFFFFF" android:backgroundTint="#333355" android:layout_marginStart="4dp"/>
+        <Button android:id="@+id/btnNormal" android:layout_width="0dp" android:layout_height="32dp"
+            android:layout_weight="1" android:text="ปกติ" android:textSize="11sp"
+            android:textColor="#FFFFFF" android:backgroundTint="#E94560" android:layout_marginStart="4dp"/>
+        <Button android:id="@+id/btnFast" android:layout_width="0dp" android:layout_height="32dp"
+            android:layout_weight="1" android:text="เร็ว" android:textSize="11sp"
+            android:textColor="#FFFFFF" android:backgroundTint="#333355" android:layout_marginStart="4dp"/>
+    </LinearLayout>
+</LinearLayout>
+EOF
+
+        # MainActivity.java
+        cat > ROVKeyboard/app/src/main/java/com/rovkeyboard/app/MainActivity.java << 'EOF'
+package com.rovkeyboard.app;
+import android.content.Intent;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.Button;
+import androidx.appcompat.app.AppCompatActivity;
+public class MainActivity extends AppCompatActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        Button btnEnable = findViewById(R.id.btnEnableIME);
+        btnEnable.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
+        Button btnSwitch = findViewById(R.id.btnSwitchIME);
+        btnSwitch.setOnClickListener(v -> {
+            InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            imm.showInputMethodPicker();
+        });
+    }
+}
+EOF
+
+        # ROVKeyboardService.java
+        cat > ROVKeyboard/app/src/main/java/com/rovkeyboard/app/ROVKeyboardService.java << 'EOF'
+package com.rovkeyboard.app;
+import android.content.res.ColorStateList;
+import android.inputmethodservice.InputMethodService;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.TextView;
+public class ROVKeyboardService extends InputMethodService {
+    private EditText etCode;
+    private TextView tvStatus;
+    private Handler handler = new Handler(Looper.getMainLooper());
+    private int charDelay = 120;
+    private boolean isTyping = false;
+    private View rootView;
+    @Override
+    public View onCreateInputView() {
+        rootView = getLayoutInflater().inflate(R.layout.keyboard_view, null);
+        etCode = rootView.findViewById(R.id.etCode);
+        tvStatus = rootView.findViewById(R.id.tvStatus);
+        Button btnType = rootView.findViewById(R.id.btnType);
+        Button btnClear = rootView.findViewById(R.id.btnClear);
+        Button btnSwitch = rootView.findViewById(R.id.btnSwitch);
+        Button btnSlow = rootView.findViewById(R.id.btnSlow);
+        Button btnNormal = rootView.findViewById(R.id.btnNormal);
+        Button btnFast = rootView.findViewById(R.id.btnFast);
+        btnSlow.setOnClickListener(v -> { charDelay = 250; setStatus("ช้า"); highlight(btnSlow,btnNormal,btnFast,0); });
+        btnNormal.setOnClickListener(v -> { charDelay = 120; setStatus("ปกติ"); highlight(btnSlow,btnNormal,btnFast,1); });
+        btnFast.setOnClickListener(v -> { charDelay = 50; setStatus("เร็ว"); highlight(btnSlow,btnNormal,btnFast,2); });
+        btnClear.setOnClickListener(v -> { etCode.setText(""); setStatus("ล้างแล้ว"); });
+        btnSwitch.setOnClickListener(v -> ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showInputMethodPicker());
+        btnType.setOnClickListener(v -> {
+            if (isTyping) {
+                isTyping = false;
+                handler.removeCallbacksAndMessages(null);
+                setStatus("หยุดแล้ว");
+                btnType.setText("พิมให้!");
+                return;
+            }
+            String code = etCode.getText().toString();
+            if (code.isEmpty()) { setStatus("วางโค้ดก่อนนะ!"); return; }
+            if (getCurrentInputConnection() == null) { setStatus("ไม่มี connection"); return; }
+            isTyping = true;
+            btnType.setText("หยุด");
+            typeNext(code, 0);
+        });
+        return rootView;
+    }
+    private void typeNext(String code, int index) {
+        if (!isTyping || index >= code.length()) {
+            if (isTyping) {
+                isTyping = false;
+                setStatus("พิมเสร็จ! (" + code.length() + " ตัว)");
+                handler.post(() -> { Button b = rootView.findViewById(R.id.btnType); if(b!=null) b.setText("พิมให้!"); });
+            }
+            return;
+        }
+        int pct = (int)((float)index / code.length() * 100);
+        setStatus("กำลังพิม " + pct + "% (" + (index+1) + "/" + code.length() + ")");
+        handler.postDelayed(() -> {
+            if (!isTyping) return;
+            InputConnection ic = getCurrentInputConnection();
+            if (ic != null) ic.commitText(String.valueOf(code.charAt(index)), 1);
+            typeNext(code, index + 1);
+        }, charDelay);
+    }
+    private void setStatus(String msg) { handler.post(() -> { if(tvStatus!=null) tvStatus.setText(msg); }); }
+    private void highlight(Button a, Button b, Button c, int sel) {
+        int on=0xFFE94560, off=0xFF333355;
+        a.setBackgroundTintList(ColorStateList.valueOf(sel==0?on:off));
+        b.setBackgroundTintList(ColorStateList.valueOf(sel==1?on:off));
+        c.setBackgroundTintList(ColorStateList.valueOf(sel==2?on:off));
+    }
+    @Override public boolean onEvaluateFullscreenMode() { return false; }
+}
+EOF
+
+        # Create launcher icons
+        python3 << 'PYEOF'
+import struct, zlib
+def make_png(size, r, g, b):
+    def chunk(name, data):
+        c = zlib.crc32(name + data) & 0xffffffff
+        return struct.pack('>I', len(data)) + name + data + struct.pack('>I', c)
+    sig = b'\x89PNG\r\n\x1a\n'
+    ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0))
+    raw = b''.join(b'\x00' + bytes([r, g, b] * size) for _ in range(size))
+    idat = chunk(b'IDAT', zlib.compress(raw))
+    iend = chunk(b'IEND', b'')
+    return sig + ihdr + idat + iend
+for dpi, sz in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144)]:
+    with open(f'ROVKeyboard/app/src/main/res/mipmap-{dpi}/ic_launcher.png','wb') as f:
+        f.write(make_png(sz, 233, 69, 96))
+print("Icons OK")
+PYEOF
+
+        # Download gradle wrapper JAR
+        curl -sL -o ROVKeyboard/gradle/wrapper/gradle-wrapper.jar \
+          https://github.com/gradle/gradle/raw/v8.2.0/gradle/wrapper/gradle-wrapper.jar
+
+        # Create gradlew script
+        cat > ROVKeyboard/gradlew << 'EOF'
+#!/bin/sh
+exec java $JAVA_OPTS -jar "$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar" "$@"
+EOF
+        chmod +x ROVKeyboard/gradlew
+
+        echo "=== Project structure ==="
+        find ROVKeyboard -type f | sort
+
     - name: Build Debug APK
       working-directory: ROVKeyboard
       run: |
-        chmod +x gradlew
         ./gradlew assembleDebug --no-daemon --stacktrace
 
     - name: Upload APK
